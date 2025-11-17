@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Assitente de E-mails com Gemini</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f8f8f8; padding: 40px; }
+        h1 { text-align: center; }
+        form { max-width: 600px; margin: 20px auto; }
+        textarea { width: 100%; height: 150px; padding: 10px; font-size: 14px; }
+        button { display: block; margin: 20px auto; padding: 10px 20px; font-size: 16px; }
+        .loading { text-align: center; margin-top: 20px; font-size: 18px; }
+
+        .email-card {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            max-width: 600px;
+        }
+
+        .email-type {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #fff;
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+
+        .produtivo {
+            background-color: #28a745;
+        }
+
+        .improdutivo {
+            background-color: #6c757d;
+        }
+
+        .email-text {
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .suggestion {
+            font-style: italic;
+            color: #555;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Classifique e receba sugestões de resposta para E-mails 🚀</h2>
+    <p>Cole o assunto e o texto dos emails no campo abaixo ou envie o arquivo com os emails:</p>
+
+    <form method="POST" action="/processar_emails">
+        <button type="button" id="button_arquivo">Carregar Arquivo</button>
+        <input name="arquivo_emails" id="arquivo_emails" type="file" accept=".txt, .pdf" style="display: none;" />
+        <textarea name="texto_emails" id="texto_emails" rows="10" cols="80"></textarea><br><br>
+        <button type="submit">Analisar E-mails</button>
+    </form>
+
+    <hr>
+    
+    <h3>Resultados</h3>
+    <pre id="loading"></pre>
+    <div id="resultado"></div>
+
+    <script>
+        var arquivo_conteudo = '';
+
+        const fileInput = document.getElementById('arquivo_emails');
+
+        document.getElementById('button_arquivo').addEventListener('click', function(event) {
+            fileInput.click();
+        });
+
+
+        fileInput.addEventListener('change', function(event) {
+            const arquivo = event.target.files[0];
+            if (arquivo) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    arquivo_conteudo = e.target.result;
+                    console.log(arquivo_conteudo);
+                };
+                reader.onerror = function(e) {
+                    console.error('Erro ao ler o arquivo:', e.target.error);
+                };
+                reader.readAsText(arquivo);
+            }
+        });
+
+
+        document.querySelector('form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const formData = new FormData(form);
+            const loadingElement = document.getElementById('loading');
+            const resultadoElement = document.getElementById('resultado');
+            resultadoElement.innerHTML = "";
+            loadingElement.textContent = "Emails sendo processados";
+
+            const textareaElemento = document.getElementById('texto_emails');
+
+            var conteudo = textareaElemento.value + arquivo_conteudo;
+
+            const params = new URLSearchParams();
+            params.append('texto_emails', conteudo);
+
+            try {
+                const response = await fetch(form.action, {
+                    method: 'POST',
+                    body: params,
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                });
+                
+                const data = await response.json();
+
+                if (data.sucesso) {
+                    loadingElement.textContent = `Emails sendo classificados`;
+
+                    const params = new URLSearchParams();
+                    params.append('emails_separados', data.emails);
+
+                    const response_classificacao = await fetch('/classificar_emails', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: params
+                    });
+                
+                    const data_classificacao = await response_classificacao.json();
+
+                    if (data_classificacao.sucesso) {
+                        loadingElement.textContent = `Gerando sugestões de resposta para os emails`;
+
+                        const params_classificacao = new URLSearchParams();
+                        params_classificacao.append('emails_classificados', data_classificacao.emails);
+
+                        const response_sugestao = await fetch('/responder_emails', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: params_classificacao
+                        });
+                    
+                        const data_sugestao = await response_sugestao.json();
+
+                        if (data_sugestao.sucesso) {
+                            loadingElement.innerHTML = "";
+
+                            var emails = data_sugestao.emails.split('-----');
+                            for (let i = 0; i < emails.length; i++) {
+                                var email = emails[i].split('=====')[0];
+                                var resposta = emails[i].split('=====')[1];
+                                var tipo = "Improdutivo";
+
+                                if(email.includes("Tipo Produtivo")){
+                                    tipo = "Produtivo"
+                                    email.replace("Tipo Produtivo", "");
+                                }else{
+                                    email.replace("Tipo Improdutivo", "");
+                                }
+
+                                var html = `
+                                    <div class="email-card">
+                                        <div class="email-type `+tipo.toLowerCase()+`">`+tipo+`</div>
+                                        <div class="email-text">
+                                            `+email+`
+                                        </div>
+                                        <div class="suggestion">
+                                            `+resposta+`
+                                        </div>
+                                    </div>
+                                `;
+
+                                resultadoElement.insertAdjacentHTML("beforeend", html);
+                                
+                            }
+                        } else {
+                            resultadoElement.textContent = `ERRO: ${data.erro || data.mensagem}`;
+                        }
+                    } else {
+                        resultadoElement.textContent = `ERRO: ${data.erro || data.mensagem}`;
+                    }
+                    
+
+                } else {
+                    resultadoElement.textContent = `ERRO: ${data.erro || data.mensagem}`;
+                }
+
+            } catch (error) {
+                resultadoElement.textContent = `Erro de Conexão: ${error}`;
+            }
+        });
+    </script>
+</body>
+</html>
