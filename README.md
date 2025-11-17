@@ -1,7 +1,7 @@
 # ClassificadordeEmails
 Automatizador de leitura e classificação de emails.
 
-Instruções para executar aplicação
+Instruções para executar aplicação:
 
 -Baixe o python
 
