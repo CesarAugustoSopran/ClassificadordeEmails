@@ -8,6 +8,7 @@ load_dotenv()
 app = Flask(__name__)
 
 client = genai.Client(api_key=os.getenv("KEY"))
+model = 'gemini-2.5-flash'
 
 @app.route('/', methods=['GET'])
 def index():
@@ -87,6 +88,7 @@ def classificar_emails():
             model=model,
             contents=prompt
         )
+
         try:
              emails_extraidos = response.text.strip()
         except (SyntaxError, NameError):
